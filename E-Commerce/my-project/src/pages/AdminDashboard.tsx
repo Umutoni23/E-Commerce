@@ -29,7 +29,16 @@ export default function AdminDashboard() {
   const [showCategoryForm, setShowCategoryForm] = useState(false);
 
   
-  
+  const { data: products = [], isLoading: loadingProducts } = useQuery<Product[]>({
+    queryKey: ['products'],
+    queryFn: async () => {
+      const res = await api.get('/public/products');
+      const body = res.data;
+      if (Array.isArray(body)) return body;
+      if (Array.isArray(body.data)) return body.data;
+      if (body.data?.all) return body.data.all;
+      return [];
+    },
   });
 
   const { data: orders = [], isLoading: loadingOrders } = useQuery<Order[]>({
