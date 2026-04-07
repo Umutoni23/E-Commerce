@@ -43,13 +43,7 @@ export default function ProductDetails() {
           className="w-full md:w-80 h-64 object-cover rounded-xl"
           onError={(e) => ((e.target as HTMLImageElement).src = 'https://placehold.co/400x300?text=No+Image')}
         />
-        <div className="flex flex-col gap-3 flex-1">
-          <h1 className="text-2xl font-bold text-gray-800">{product.title}</h1>
-          <p className="text-sm text-gray-500">Brand: {product.brand}</p>
-          <p className="text-gray-600 text-sm">{product.description}</p>
-          <p className="text-blue-600 text-2xl font-bold">${Number(product.price).toFixed(2)}</p>
-          <p className="text-sm text-gray-400">In stock: {product.stock}</p>
-          <button
+        
             onClick={() => isAuthenticated ? addToCart.mutate() : navigate('/login')}
             disabled={addToCart.isPending || product.stock === 0}
             className="mt-auto bg-blue-600 text-white py-3 rounded-xl hover:bg-blue-700 transition font-medium disabled:opacity-50"
