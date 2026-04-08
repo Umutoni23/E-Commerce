@@ -1,66 +1,43 @@
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
-import { zodResolver } from '@hookform/resolvers/zod';
 import api from '../api/axios';
-import type { Product, Order, OrderStatus, Category } from '../types';
+import type { Product } from '../types';
 import toast from 'react-hot-toast';
+import { getFallbackProductImage, getProductImage } from '../utils/productImage';
 
-type Tab = 'products' | 'orders' | 'categories';
+function getProductsFromResponse(body: unknown): Product[] {
+  if (Array.isArray(body)) return body as Product[];
+  if (!body || typeof body !== 'object') return [];
 
-const categorySchema = z.object({
-  name: z.string().min(1, 'Name is required').refine((v) => v.trim().length > 0, 'Cannot be empty'),
-  description: z.string().optional(),
-});
-type CategoryForm = z.infer<typeof categorySchema>;
+  const source = body as Record<string, unknown>;
+
+  if (Array.isArray(source.data)) return source.data as Product[];
+
+  if (source.data && typeof source.data === 'object') {
+    const nested = source.data as Record<string, unknown>;
+    if (Array.isArray(nested.all)) return nested.all as Product[];
+    if (Array.isArray(nested.products)) return nested.products as Product[];
+    if (Array.isArray(nested.items)) return nested.items as Product[];
+  }
+
+  if (Array.isArray(source.products)) return source.products as Product[];
+  if (Array.isArray(source.items)) return source.items as Product[];
+
+  return [];
+}
 
 export default function AdminDashboard() {
   const qc = useQueryClient();
-  const [tab, setTab] = useState<Tab>('products');
-
-
   const [deleteProductId, setDeleteProductId] = useState<string | null>(null);
 
-  
-  const [deleteCategoryId, setDeleteCategoryId] = useState<string | null>(null);
-  const [editCategory, setEditCategory] = useState<Category | null>(null);
-  const [showCategoryForm, setShowCategoryForm] = useState(false);
-
-  
-  const { data: products = [], isLoading: loadingProducts } = useQuery<Product[]>({
+  const { data: products = [], isLoading } = useQuery<Product[]>({
     queryKey: ['products'],
     queryFn: async () => {
       const res = await api.get('/public/products');
-      const body = res.data;
-      if (Array.isArray(body)) return body;
-      if (Array.isArray(body.data)) return body.data;
-      if (body.data?.all) return body.data.all;
-      return [];
+      return getProductsFromResponse(res.data);
     },
   });
-
-  const { data: orders = [], isLoading: loadingOrders } = useQuery<Order[]>({
-    queryKey: ['orders'],
-    queryFn: async () => {
-      const res = await api.get('/auth/orders/admin/all');
-      const body = res.data;
-      return Array.isArray(body) ? body : (body.data ?? body.items ?? body.orders ?? []);
-    },
-    enabled: tab === 'orders',
-  });
-
-  const { data: categories = [], isLoading: loadingCategories } = useQuery<Category[]>({
-    queryKey: ['categories'],
-    queryFn: async () => {
-      const res = await api.get('/categories');
-      const body = res.data;
-      return Array.isArray(body) ? body : (body.data ?? body.items ?? body.categories ?? []);
-    },
-    enabled: tab === 'categories',
-  });
-
 
   const deleteProductMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/admin/products/${id}`),
@@ -69,297 +46,165 @@ export default function AdminDashboard() {
       toast.success('Product deleted');
       setDeleteProductId(null);
     },
-    onError: () => toast.error('Delete failed'),
+    onError: () => toast.error('Failed to delete product'),
   });
 
-  const statusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: OrderStatus }) =>
-      api.patch(`/auth/orders/${id}/status`, { status }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['orders'] });
-      toast.success('Status updated');
-    },
-    onError: () => toast.error('Update failed'),
-  });
+  const totalStock = useMemo(
+    () => products.reduce((sum, product) => sum + Number(product.stock || 0), 0),
+    [products]
+  );
 
-  
-  const createCategoryMutation = useMutation({
-    mutationFn: (body: CategoryForm) => api.post('/categories', body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['categories'] });
-      toast.success('Category created');
-      setShowCategoryForm(false);
-      categoryForm.reset();
-    },
-    onError: () => toast.error('Failed to create category'),
-  });
-
-  const editCategoryMutation = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: CategoryForm }) =>
-      api.put(`/categories/${id}`, body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['categories'] });
-      toast.success('Category updated');
-      setEditCategory(null);
-      categoryForm.reset();
-    },
-    onError: () => toast.error('Failed to update category'),
-  });
-
-  const deleteCategoryMutation = useMutation({
-    mutationFn: (id: string) => api.delete(`/categories/${id}`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['categories'] });
-      toast.success('Category deleted');
-      setDeleteCategoryId(null);
-    },
-    onError: () => toast.error('Failed to delete category'),
-  });
-
-  
-  const categoryForm = useForm<CategoryForm>({
-    resolver: zodResolver(categorySchema),
-    mode: 'onChange',
-  });
-
-  const openEditCategory = (cat: Category) => {
-    setEditCategory(cat);
-    setShowCategoryForm(false);
-    categoryForm.reset({ name: cat.name, description: cat.description ?? '' });
-  };
-
-  const onCategorySubmit = (values: CategoryForm) => {
-    if (editCategory) {
-      editCategoryMutation.mutate({ id: editCategory.id, body: values });
-    } else {
-      createCategoryMutation.mutate(values);
-    }
-  };
-
-  const cancelCategoryForm = () => {
-    setShowCategoryForm(false);
-    setEditCategory(null);
-    categoryForm.reset();
-  };
-
-  const isCategoryFormOpen = showCategoryForm || !!editCategory;
+  const averagePrice = useMemo(() => {
+    if (products.length === 0) return 0;
+    const total = products.reduce((sum, product) => sum + Number(product.price || 0), 0);
+    return total / products.length;
+  }, [products]);
 
   return (
-    <main className="max-w-6xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Admin Dashboard</h1>
-        {tab === 'products' && (
-          <Link to="/admin/product/new" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition text-sm font-medium">
-            + Add Product
+    <main className="max-w-7xl mx-auto px-4 py-8">
+      <section className="mb-8 overflow-hidden rounded-[32px] bg-gradient-to-br from-slate-950 via-blue-950 to-cyan-700 px-6 py-8 text-white shadow-2xl">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-cyan-200">Admin Dashboard</p>
+            <h1 className="mt-3 text-3xl font-bold sm:text-4xl">All products in one place</h1>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-200 sm:text-base">
+              Review every product, check pricing and stock, and use the action buttons to edit, update, or delete products smoothly.
+            </p>
+          </div>
+
+          <Link
+            to="/admin/product/new"
+            className="inline-flex items-center justify-center rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-900 transition hover:bg-cyan-100"
+          >
+            + Add New Product
           </Link>
-        )}
-        {tab === 'categories' && !isCategoryFormOpen && (
-          <button
-            onClick={() => { setShowCategoryForm(true); setEditCategory(null); categoryForm.reset(); }}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition text-sm font-medium"
-          >
-            + Add Category
-          </button>
-        )}
-      </div>
-
-      
-      <div className="flex gap-4 mb-6 border-b">
-        {(['products', 'orders', 'categories'] as Tab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`pb-2 text-sm font-medium capitalize border-b-2 transition ${tab === t ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-
-
-      {tab === 'products' && (
-        loadingProducts ? <p className="text-gray-500">Loading...</p> : (
-          <div className="overflow-x-auto rounded-xl shadow">
-            <table className="w-full text-sm bg-white">
-              <thead className="bg-gray-50 text-gray-600 uppercase text-xs">
-                <tr>
-                  {['ID', 'Title', 'Brand', 'Price', 'Stock', 'Actions'].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {products.map((p) => (
-                  <tr key={p.id} className="border-t hover:bg-gray-50">
-                    <td className="px-4 py-3">{p.id}</td>
-                    <td className="px-4 py-3 font-medium">{p.title}</td>
-                    <td className="px-4 py-3 text-gray-500">{p.brand}</td>
-                    <td className="px-4 py-3">${Number(p.price).toFixed(2)}</td>
-                    <td className="px-4 py-3">{p.stock}</td>
-                    <td className="px-4 py-3 flex gap-2">
-                      <Link to={`/admin/product/${p.id}`} className="text-blue-600 hover:underline">Edit</Link>
-                      <button onClick={() => setDeleteProductId(p.id)} className="text-red-500 hover:underline">Delete</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      )}
-
-      
-      {tab === 'orders' && (
-        loadingOrders ? <p className="text-gray-500">Loading...</p> : (
-          <div className="overflow-x-auto rounded-xl shadow">
-            <table className="w-full text-sm bg-white">
-              <thead className="bg-gray-50 text-gray-600 uppercase text-xs">
-                <tr>
-                  {['ID', 'Customer', 'Total', 'Payment', 'Status', 'Update Status'].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map((o) => (
-                  <tr key={o.id} className="border-t hover:bg-gray-50">
-                    <td className="px-4 py-3">{o.id}</td>
-                    <td className="px-4 py-3">{o.user?.email ?? o.fullName}</td>
-                    <td className="px-4 py-3">${Number(o.totalAmount).toFixed(2)}</td>
-                    <td className="px-4 py-3">{o.paymentMethod}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        o.status === 'DELIVERED' ? 'bg-green-100 text-green-700' :
-                        o.status === 'CANCELLED' ? 'bg-red-100 text-red-700' :
-                        o.status === 'SHIPPED' ? 'bg-blue-100 text-blue-700' :
-                        'bg-yellow-100 text-yellow-700'
-                      }`}>{o.status}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <select
-                        defaultValue={o.status}
-                        onChange={(e) => statusMutation.mutate({ id: o.id, status: e.target.value as OrderStatus })}
-                        className="border rounded px-2 py-1 text-xs"
-                      >
-                        {(['PENDING', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED'] as OrderStatus[]).map((s) => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      )}
-
-      
-      {tab === 'categories' && (
-        <div className="flex flex-col gap-6">
-          
-          {isCategoryFormOpen && (
-            <form
-              onSubmit={categoryForm.handleSubmit(onCategorySubmit)}
-              className="bg-white rounded-xl shadow p-5 flex flex-col gap-4 max-w-lg"
-            >
-              <h3 className="font-semibold text-gray-800">{editCategory ? 'Edit Category' : 'New Category'}</h3>
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-gray-700">Name</label>
-                <input
-                  {...categoryForm.register('name')}
-                  className={`border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 transition ${categoryForm.formState.errors.name ? 'border-red-500 focus:ring-red-300' : 'border-gray-300 focus:ring-blue-300'}`}
-                />
-                {categoryForm.formState.errors.name && (
-                  <p className="text-red-500 text-xs">{categoryForm.formState.errors.name.message}</p>
-                )}
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-gray-700">Description (optional)</label>
-                <input
-                  {...categoryForm.register('description')}
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-300"
-                />
-              </div>
-              <div className="flex gap-3">
-                <button type="button" onClick={cancelCategoryForm} className="flex-1 border rounded-lg py-2 text-sm hover:bg-gray-50">Cancel</button>
-                <button
-                  type="submit"
-                  disabled={createCategoryMutation.isPending || editCategoryMutation.isPending}
-                  className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700 transition"
-                >
-                  {createCategoryMutation.isPending || editCategoryMutation.isPending
-                    ? 'Saving...'
-                    : editCategory ? 'Update' : 'Create'}
-                </button>
-              </div>
-            </form>
-          )}
-
-          
-          {loadingCategories ? <p className="text-gray-500">Loading...</p> : (
-            <div className="overflow-x-auto rounded-xl shadow">
-              <table className="w-full text-sm bg-white">
-                <thead className="bg-gray-50 text-gray-600 uppercase text-xs">
-                  <tr>
-                    {['ID', 'Name', 'Description', 'Actions'].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {categories.map((c) => (
-                    <tr key={c.id} className="border-t hover:bg-gray-50">
-                      <td className="px-4 py-3">{c.id}</td>
-                      <td className="px-4 py-3 font-medium">{c.name}</td>
-                      <td className="px-4 py-3 text-gray-500">{c.description ?? '—'}</td>
-                      <td className="px-4 py-3 flex gap-2">
-                        <button onClick={() => openEditCategory(c)} className="text-blue-600 hover:underline">Edit</button>
-                        <button onClick={() => setDeleteCategoryId(c.id)} className="text-red-500 hover:underline">Delete</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
-      )}
 
-      
+        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur-sm">
+            <p className="text-xs uppercase tracking-[0.18em] text-cyan-200">Total Products</p>
+            <p className="mt-2 text-3xl font-bold">{products.length}</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur-sm">
+            <p className="text-xs uppercase tracking-[0.18em] text-cyan-200">Total Stock</p>
+            <p className="mt-2 text-3xl font-bold">{totalStock}</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur-sm">
+            <p className="text-xs uppercase tracking-[0.18em] text-cyan-200">Average Price</p>
+            <p className="mt-2 text-3xl font-bold">${averagePrice.toFixed(2)}</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-cyan-700">Products</p>
+            <h2 className="mt-2 text-2xl font-bold text-slate-900">Product Management</h2>
+            <p className="mt-2 text-sm text-slate-500">Each product card includes full information and direct actions.</p>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <p className="text-slate-500">Loading products...</p>
+        ) : products.length === 0 ? (
+          <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center">
+            <p className="text-lg font-semibold text-slate-700">No products available yet.</p>
+            <p className="mt-2 text-sm text-slate-500">Add your first product to start managing your catalog.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {products.map((product) => (
+              <article
+                key={product.id}
+                className="overflow-hidden rounded-[28px] border border-slate-200 bg-gradient-to-b from-white to-slate-50 shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-xl"
+              >
+                <div className="relative">
+                  <img
+                    src={getProductImage(product)}
+                    alt={product.title}
+                    className="h-56 w-full object-cover"
+                    onError={(e) => ((e.target as HTMLImageElement).src = getFallbackProductImage())}
+                  />
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/85 via-slate-900/40 to-transparent px-5 py-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-cyan-200">{product.brand || 'Brand not set'}</p>
+                    <h3 className="mt-1 text-xl font-bold text-white">{product.title}</h3>
+                  </div>
+                </div>
+
+                <div className="space-y-4 p-5">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Price</p>
+                      <p className="mt-2 text-xl font-bold text-slate-900">${Number(product.price).toFixed(2)}</p>
+                    </div>
+                    <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Stock</p>
+                      <p className="mt-2 text-xl font-bold text-slate-900">{product.stock}</p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-slate-900 p-4 text-white">
+                    <p className="text-xs uppercase tracking-[0.18em] text-cyan-200">Category</p>
+                    <p className="mt-2 text-sm font-medium">{product.category?.name ?? product.categoryId ?? 'Not assigned'}</p>
+                    <p className="mt-4 text-xs uppercase tracking-[0.18em] text-cyan-200">Product ID</p>
+                    <p className="mt-2 break-all text-xs text-slate-300">{product.id}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Description</p>
+                    <p className="mt-2 min-h-[72px] text-sm leading-6 text-slate-600">{product.description || 'No description provided.'}</p>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3 pt-2">
+                    <Link
+                      to={`/admin/product/${product.id}`}
+                      className="rounded-2xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-center text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
+                    >
+                      Edit
+                    </Link>
+                    <Link
+                      to={`/admin/product/${product.id}`}
+                      className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-center text-sm font-semibold text-amber-700 transition hover:bg-amber-100"
+                    >
+                      Update
+                    </Link>
+                    <button
+                      onClick={() => setDeleteProductId(product.id)}
+                      className="rounded-2xl bg-red-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
       {deleteProductId !== null && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
-            <h3 className="text-lg font-bold text-gray-800 mb-2">Delete Product</h3>
-            <p className="text-gray-500 text-sm mb-6">Are you sure? This action cannot be undone.</p>
-            <div className="flex gap-3 justify-end">
-              <button onClick={() => setDeleteProductId(null)} className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">Cancel</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4">
+          <div className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl">
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-red-500">Delete Product</p>
+            <h3 className="mt-2 text-2xl font-bold text-slate-900">Are you sure?</h3>
+            <p className="mt-3 text-sm leading-6 text-slate-500">
+              This product will be removed from the dashboard. This action cannot be undone.
+            </p>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => setDeleteProductId(null)}
+                className="flex-1 rounded-2xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Cancel
+              </button>
               <button
                 onClick={() => deleteProductMutation.mutate(deleteProductId)}
                 disabled={deleteProductMutation.isPending}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 transition"
+                className="flex-1 rounded-2xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
               >
                 {deleteProductMutation.isPending ? 'Deleting...' : 'Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      
-      {deleteCategoryId !== null && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
-            <h3 className="text-lg font-bold text-gray-800 mb-2">Delete Category</h3>
-            <p className="text-gray-500 text-sm mb-6">Are you sure? This action cannot be undone.</p>
-            <div className="flex gap-3 justify-end">
-              <button onClick={() => setDeleteCategoryId(null)} className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">Cancel</button>
-              <button
-                onClick={() => deleteCategoryMutation.mutate(deleteCategoryId)}
-                disabled={deleteCategoryMutation.isPending}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 transition"
-              >
-                {deleteCategoryMutation.isPending ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           </div>

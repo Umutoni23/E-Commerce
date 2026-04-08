@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthProvider';
-import { UserRoute, AdminRoute } from './Components/protectedRoute';
+import { UserRoute } from './Components/protectedRoute';
 import Navbar from './Components/Navbar';
 import Home from './pages/Home';
 import Login from './pages/Login';
@@ -32,8 +32,8 @@ export default function App() {
             <Route path="/checkout" element={<UserRoute><Checkout /></UserRoute>} />
             <Route path="/orders" element={<UserRoute><Orders /></UserRoute>} />
 
-            <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
-            <Route path="/admin/product/:id" element={<AdminRoute><ProductForm /></AdminRoute>} />
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/admin/product/:id" element={<ProductForm />} />
           </Routes>
           <Toaster position="top-right" />
         </BrowserRouter>

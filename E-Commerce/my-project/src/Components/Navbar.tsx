@@ -16,6 +16,7 @@ export default function Navbar() {
   const links = (
     <>
       <Link to="/" onClick={() => setOpen(false)} className="hover:text-blue-600 transition">Home</Link>
+      <Link to="/admin" onClick={() => setOpen(false)} className="hover:text-blue-600 transition">Admin Dashboard</Link>
       {!isAuthenticated && (
         <Link to="/login" onClick={() => setOpen(false)} className="hover:text-blue-600 transition">Login</Link>
       )}
@@ -24,9 +25,6 @@ export default function Navbar() {
           <Link to="/cart" onClick={() => setOpen(false)} className="hover:text-blue-600 transition">My Cart</Link>
           <Link to="/orders" onClick={() => setOpen(false)} className="hover:text-blue-600 transition">My Orders</Link>
         </>
-      )}
-      {isAuthenticated && userRole === 'ADMIN' && (
-        <Link to="/admin" onClick={() => setOpen(false)} className="hover:text-blue-600 transition">Admin Dashboard</Link>
       )}
       {isAuthenticated && (
         <button onClick={handleLogout} className="hover:text-red-500 transition text-left">Logout</button>

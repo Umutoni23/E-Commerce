@@ -22,6 +22,15 @@ export default function Home() {
 
   return (
     <main className="max-w-6xl mx-auto px-4 py-8">
+      <section className="mb-8 overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-blue-900 to-cyan-700 px-6 py-10 text-white shadow-xl">
+        <div className="max-w-3xl">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-200">Welcome</p>
+          <h1 className="mt-3 text-3xl font-bold sm:text-4xl">Welcome to Umutoni's shopping space</h1>
+          <p className="mt-4 text-sm leading-7 text-slate-100 sm:text-base">
+            New customers can explore fresh deals, and existing customers can continue shopping, review product details, and manage their orders with confidence. At Umutoni's Shopping place Customer is King!
+          </p>
+        </div>
+      </section>
       <h1 className="text-2xl font-bold text-gray-800 mb-6">Product Catalog</h1>
       {products.length === 0 ? (
         <p className="text-gray-500">No products available.</p>

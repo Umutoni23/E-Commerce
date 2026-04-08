@@ -21,6 +21,32 @@ const schema = z.object({
 
 type ProductFormData = z.infer<typeof schema>;
 
+function normalizeImageUrl(image: unknown): string | null {
+  if (typeof image === 'string' && image.trim()) return image.trim();
+  if (image && typeof image === 'object') {
+    const candidate = (image as { url?: unknown; imageUrl?: unknown; src?: unknown }).url
+      ?? (image as { url?: unknown; imageUrl?: unknown; src?: unknown }).imageUrl
+      ?? (image as { url?: unknown; imageUrl?: unknown; src?: unknown }).src;
+    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+  }
+  return null;
+}
+
+function getProductFromResponse(body: unknown): Product | null {
+  if (!body || typeof body !== 'object') return null;
+
+  const source = body as {
+    data?: Product | { product?: Product };
+    product?: Product;
+  };
+
+  if (source.data && typeof source.data === 'object' && 'product' in source.data) {
+    return source.data.product ?? null;
+  }
+
+  return (source.data as Product | undefined) ?? source.product ?? (body as Product);
+}
+
 export default function ProductForm() {
   const { id } = useParams();
   const isEdit = !!id && id !== 'new';
@@ -36,12 +62,11 @@ export default function ProductForm() {
     },
   });
 
-  const { data: product } = useQuery<Product>({
+  const { data: product, isLoading: loadingProduct } = useQuery<Product | null>({
     queryKey: ['product', id],
     queryFn: async () => {
-      const res = await api.get(`/products/${id}`);
-      const body = res.data;
-      return body.data ?? body;
+      const res = await api.get(`/public/products/${id}`);
+      return getProductFromResponse(res.data);
     },
     enabled: isEdit,
   });
@@ -56,6 +81,10 @@ export default function ProductForm() {
 
   useEffect(() => {
     if (product) {
+      const normalizedImages = Array.isArray(product.images)
+        ? product.images.map(normalizeImageUrl).filter((url): url is string => Boolean(url))
+        : [];
+
       reset({
         title: product.title,
         description: product.description,
@@ -63,7 +92,7 @@ export default function ProductForm() {
         price: String(product.price),
         stock: String(product.stock),
         categoryId: String(product.categoryId ?? product.category?.id ?? ''),
-        images: product.images.map((url) => ({ url })),
+        images: normalizedImages.length > 0 ? normalizedImages.map((url) => ({ url })) : [{ url: '' }],
       });
     }
   }, [product, reset]);
@@ -74,17 +103,33 @@ export default function ProductForm() {
         ...payload,
         price: Number(payload.price),
         stock: Number(payload.stock),
-        images: payload.images.map((i) => i.url),
+        images: payload.images.map((i) => i.url.trim()).filter(Boolean),
       };
-      return isEdit ? api.patch(`/admin/products/${id}`, body) : api.post('/admin/products', body);
+      return isEdit ? api.put(`/admin/products/${id}`, body) : api.post('/admin/products', body);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['product', id] });
       toast.success(isEdit ? 'Product updated!' : 'Product created!');
       navigate('/admin');
     },
     onError: () => toast.error('Failed to save product'),
   });
+
+  if (isEdit && loadingProduct) {
+    return <main className="max-w-2xl mx-auto px-4 py-8 text-gray-500">Loading product...</main>;
+  }
+
+  if (isEdit && !loadingProduct && !product) {
+    return (
+      <main className="max-w-2xl mx-auto px-4 py-8">
+        <p className="text-red-500 mb-4">We could not load that product for editing.</p>
+        <button onClick={() => navigate('/admin')} className="text-blue-600 hover:underline text-sm">
+          Back to dashboard
+        </button>
+      </main>
+    );
+  }
 
   return (
     <main className="max-w-2xl mx-auto px-4 py-8">
@@ -135,7 +180,14 @@ export default function ProductForm() {
                 className={`flex-1 border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 ${errors.images?.[index]?.url ? 'border-red-500' : 'border-gray-300'}`}
               />
               {fields.length > 1 && (
-                <button type="button" onClick={() => remove(index)} className="text-red-500 hover:text-red-700 text-sm px-2">✕</button>
+                <button
+                  type="button"
+                  onClick={() => remove(index)}
+                  className="text-red-500 hover:text-red-700 text-sm px-2"
+                  aria-label={`Remove image ${index + 1}`}
+                >
+                  x
+                </button>
               )}
             </div>
           ))}
