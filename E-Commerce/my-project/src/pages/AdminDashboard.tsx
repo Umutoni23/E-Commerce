@@ -267,7 +267,7 @@ export default function AdminDashboard() {
                     <td className="px-4 py-3">{p.stock}</td>
                     <td className="px-4 py-3 flex gap-3">
                       <Link to={`/admin/product/${p.id}`} className="text-blue-600 hover:underline">Edit</Link>
-                      <Link to={`/admin/product/${p.id}`} className="text-amber-600 hover:underline">Update</Link>
+            
                       <button onClick={() => setDeleteProductId(p.id)} className="text-red-500 hover:underline">Delete</button>
                     </td>
                   </tr>
