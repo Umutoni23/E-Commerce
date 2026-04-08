@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { Product } from '../types';
+import { getFallbackProductImage, getProductImage } from '../utils/productImage';
 
 interface Props {
   product: Product;
@@ -9,10 +10,10 @@ export default function ProductCard({ product }: Props) {
   return (
     <div className="bg-white rounded-xl shadow hover:shadow-lg transition overflow-hidden flex flex-col">
       <img
-        src={product.images?.[0] ?? 'https://placehold.co/300x200?text=No+Image'}
+        src={getProductImage(product)}
         alt={product.title}
         className="w-full h-48 object-cover"
-        onError={(e) => ((e.target as HTMLImageElement).src = 'https://placehold.co/300x200?text=No+Image')}
+        onError={(e) => ((e.target as HTMLImageElement).src = getFallbackProductImage())}
       />
       <div className="p-4 flex flex-col flex-1 gap-2">
         <h3 className="font-semibold text-gray-800 truncate">{product.title}</h3>

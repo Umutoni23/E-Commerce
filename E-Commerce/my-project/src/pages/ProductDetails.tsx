@@ -4,6 +4,7 @@ import api from '../api/axios';
 import type { Product } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import toast from 'react-hot-toast';
+import { getFallbackProductImage, getProductImage } from '../utils/productImage';
 
 export default function ProductDetails() {
   const { id } = useParams();
@@ -38,10 +39,10 @@ export default function ProductDetails() {
       <button onClick={() => navigate(-1)} className="text-blue-600 hover:underline text-sm mb-6 block">← Back</button>
       <div className="bg-white rounded-2xl shadow p-6 flex flex-col md:flex-row gap-8">
         <img
-          src={product.images?.[0] ?? 'https://placehold.co/400x300?text=No+Image'}
+          src={getProductImage(product)}
           alt={product.title}
           className="w-full md:w-80 h-64 object-cover rounded-xl"
-          onError={(e) => ((e.target as HTMLImageElement).src = 'https://placehold.co/400x300?text=No+Image')}
+          onError={(e) => ((e.target as HTMLImageElement).src = getFallbackProductImage())}
         />
         <div className="flex flex-col gap-3 flex-1">
           <h1 className="text-2xl font-bold text-gray-800">{product.title}</h1>
