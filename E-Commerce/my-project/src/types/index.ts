@@ -17,11 +17,12 @@ export interface Category {
 export interface Product {
   id: string;
   title: string;
+  name?: string;
   description: string;
   price: number;
   stock: number;
   brand: string;
-  images: string[];
+  images: Array<string | { url?: string; imageUrl?: string; src?: string }>;
   category?: Category;
   categoryId?: string;
 }

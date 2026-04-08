@@ -3,10 +3,40 @@ import { AuthContext } from './AuthContext';
 import api from '../api/axios';
 import type { AuthUser } from '../types';
 
+function parseStoredUser(): AuthUser | null {
+  const stored = localStorage.getItem('user');
+  if (!stored) return null;
+
+  try {
+    const parsed = JSON.parse(stored) as Partial<AuthUser> & {
+      user?: Partial<AuthUser>;
+      data?: { user?: Partial<AuthUser>; token?: string };
+      token?: string;
+    };
+
+    const nestedUser = parsed.user ?? parsed.data?.user;
+    const token = parsed.token ?? parsed.data?.token ?? nestedUser?.token;
+    const email = parsed.email ?? nestedUser?.email;
+    const role = parsed.role ?? nestedUser?.role;
+
+    if (!email || !role) return null;
+
+    return {
+      id: parsed.id ?? nestedUser?.id,
+      email,
+      role,
+      token,
+      name: parsed.name ?? nestedUser?.name,
+    };
+  } catch {
+    localStorage.removeItem('user');
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(() => {
-    const stored = localStorage.getItem('user');
-    return stored ? JSON.parse(stored) : null;
+    return parseStoredUser();
   });
 
   useEffect(() => {
@@ -15,17 +45,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const login = async (email: string, password: string) => {
-    if (email === 'admin@admin.com' && password === 'admin123') {
-      setUser({ email, role: 'ADMIN', token: 'admin-token' });
-      return;
-    }
     const res = await api.post('/auth/users/login', { email, password });
-    const u = res.data.data ?? res.data;
-    setUser({
-      email: u.email,
-      role: u.role ?? 'USER',
-      token: u.token ?? u.accessToken ?? u.access_token,
-    });
+    const payload = res.data?.data ?? res.data;
+    const apiUser = payload?.user ?? payload;
+    const normalizedUser: AuthUser = {
+      id: apiUser?.id,
+      email: apiUser?.email ?? email,
+      role: apiUser?.role ?? 'USER',
+      token: payload?.token ?? apiUser?.token ?? apiUser?.accessToken ?? apiUser?.access_token,
+      name: apiUser?.name,
+    };
+
+    localStorage.setItem('user', JSON.stringify(normalizedUser));
+    setUser(normalizedUser);
   };
 
   return (

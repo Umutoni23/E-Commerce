@@ -5,6 +5,7 @@ import type { Product } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import toast from 'react-hot-toast';
 import { getFallbackProductImage, getProductImage } from '../utils/productImage';
+import { getProductFromBody, getProductTitle } from '../utils/productModel';
 
 export default function ProductDetails() {
   const { id } = useParams();
@@ -16,8 +17,7 @@ export default function ProductDetails() {
     queryKey: ['product', id],
     queryFn: async () => {
       const res = await api.get(`/public/products/${id}`);
-      const body = res.data;
-      return body.data?.product ?? body.data ?? body;
+      return getProductFromBody(res.data) as Product;
     },
   });
 
@@ -40,12 +40,12 @@ export default function ProductDetails() {
       <div className="bg-white rounded-2xl shadow p-6 flex flex-col md:flex-row gap-8">
         <img
           src={getProductImage(product)}
-          alt={product.title}
+          alt={getProductTitle(product)}
           className="w-full md:w-80 h-64 object-cover rounded-xl"
           onError={(e) => ((e.target as HTMLImageElement).src = getFallbackProductImage())}
         />
         <div className="flex flex-col gap-3 flex-1">
-          <h1 className="text-2xl font-bold text-gray-800">{product.title}</h1>
+          <h1 className="text-2xl font-bold text-gray-800">{getProductTitle(product)}</h1>
           <p className="text-sm text-gray-500">Brand: {product.brand}</p>
           <p className="text-gray-600 text-sm">{product.description}</p>
           <p className="text-blue-600 text-2xl font-bold">${Number(product.price).toFixed(2)}</p>

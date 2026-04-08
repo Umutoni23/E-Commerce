@@ -4,10 +4,12 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
+import axios from 'axios';
 import api from '../api/axios';
 import FormInput from '../Components/FormInput';
 import type { Category, Product } from '../types';
 import toast from 'react-hot-toast';
+import { getProductFromBody } from '../utils/productModel';
 
 const schema = z.object({
   title: z.string().min(1, 'Title is required').refine((v) => v.trim().length > 0, 'Cannot be empty spaces'),
@@ -16,7 +18,7 @@ const schema = z.object({
   price: z.string().refine((v) => !isNaN(Number(v)) && Number(v) > 0, 'Price must be greater than 0'),
   stock: z.string().refine((v) => !isNaN(Number(v)) && Number.isInteger(Number(v)) && Number(v) >= 0, 'Stock must be a non-negative integer'),
   categoryId: z.string().min(1, 'Category is required'),
-  images: z.array(z.object({ url: z.string().min(1, 'Image URL is required') })).min(1, 'At least one image is required'),
+  images: z.array(z.object({ url: z.string().optional() })),
 });
 
 type ProductFormData = z.infer<typeof schema>;
@@ -30,21 +32,6 @@ function normalizeImageUrl(image: unknown): string | null {
     if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
   }
   return null;
-}
-
-function getProductFromResponse(body: unknown): Product | null {
-  if (!body || typeof body !== 'object') return null;
-
-  const source = body as {
-    data?: Product | { product?: Product };
-    product?: Product;
-  };
-
-  if (source.data && typeof source.data === 'object' && 'product' in source.data) {
-    return source.data.product ?? null;
-  }
-
-  return (source.data as Product | undefined) ?? source.product ?? (body as Product);
 }
 
 export default function ProductForm() {
@@ -66,7 +53,7 @@ export default function ProductForm() {
     queryKey: ['product', id],
     queryFn: async () => {
       const res = await api.get(`/public/products/${id}`);
-      return getProductFromResponse(res.data);
+      return getProductFromBody(res.data);
     },
     enabled: isEdit,
   });
@@ -99,21 +86,45 @@ export default function ProductForm() {
 
   const mutation = useMutation({
     mutationFn: (payload: ProductFormData) => {
-      const body = {
-        ...payload,
+      const imageUrls = payload.images
+        .map((i) => i.url?.trim() ?? '')
+        .filter(Boolean);
+
+      const body: {
+        name: string;
+        description: string;
+        brand: string;
+        price: number;
+        stock: number;
+        categoryId: string;
+      } = {
+        name: payload.title.trim(),
+        description: payload.description,
+        brand: payload.brand,
         price: Number(payload.price),
         stock: Number(payload.stock),
-        images: payload.images.map((i) => i.url.trim()).filter(Boolean),
+        categoryId: payload.categoryId,
       };
-      return isEdit ? api.put(`/admin/products/${id}`, body) : api.post('/admin/products', body);
+
+      if (imageUrls.length > 0) {
+        toast('Image URLs are not updated by this API, so the product details will save without changing images.', {
+          icon: 'ℹ',
+        });
+      }
+
+      return isEdit ? api.patch(`/admin/products/${id}`, body) : api.post('/admin/products', body);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['product', id] });
-      toast.success(isEdit ? 'Product updated!' : 'Product created!');
+      toast.success(isEdit ? 'Product updated successfully' : 'Product created successfully');
       navigate('/admin');
     },
-    onError: () => toast.error('Failed to save product'),
+    onError: (error) => {
+      console.error('Failed to save product', error);
+      const responseData = axios.isAxiosError(error) ? error.response?.data as { message?: string; error?: string } | undefined : undefined;
+      toast.error(responseData?.message ?? responseData?.error ?? 'Failed to save product');
+    },
   });
 
   if (isEdit && loadingProduct) {
@@ -171,7 +182,7 @@ export default function ProductForm() {
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-gray-700">Images</label>
+          <label className="text-sm font-medium text-gray-700">Images (optional)</label>
           {fields.map((field, index) => (
             <div key={field.id} className="flex gap-2">
               <input
@@ -191,9 +202,6 @@ export default function ProductForm() {
               )}
             </div>
           ))}
-          {errors.images && !Array.isArray(errors.images) && (
-            <p className="text-red-500 text-xs">{(errors.images as { message?: string }).message}</p>
-          )}
           <button type="button" onClick={() => append({ url: '' })} className="text-blue-600 text-sm hover:underline self-start">+ Add Image</button>
         </div>
 

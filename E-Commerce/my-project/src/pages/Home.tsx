@@ -2,18 +2,14 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../api/axios';
 import type { Product } from '../types';
 import ProductCard from '../Components/productCard';
+import { getProductsFromBody } from '../utils/productModel';
 
 export default function Home() {
   const { data: products = [], isLoading, isError } = useQuery<Product[]>({
     queryKey: ['products'],
     queryFn: async () => {
       const res = await api.get('/public/products');
-      const body = res.data;
-      // API returns { data: { all: [], grouped: {} } }
-      if (Array.isArray(body)) return body;
-      if (Array.isArray(body.data)) return body.data;
-      if (body.data?.all) return body.data.all;
-      return [];
+      return getProductsFromBody(res.data);
     },
   });
 

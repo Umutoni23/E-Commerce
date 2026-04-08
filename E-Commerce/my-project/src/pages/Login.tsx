@@ -27,7 +27,13 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const loginForm = useForm<LoginForm>({ resolver: zodResolver(loginSchema) });
+  const loginForm = useForm<LoginForm>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: 'admin@admin.com',
+      password: 'admin123',
+    },
+  });
   const registerForm = useForm<RegisterForm>({ resolver: zodResolver(registerSchema) });
 
   const onLogin = async (values: LoginForm) => {

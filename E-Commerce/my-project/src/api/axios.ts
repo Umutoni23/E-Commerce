@@ -14,10 +14,16 @@ api.interceptors.request.use(
 
     if (stored) {
       try {
-        const user = JSON.parse(stored);
+        const parsed = JSON.parse(stored) as {
+          token?: string;
+          user?: { token?: string };
+          data?: { token?: string; user?: { token?: string } };
+        };
 
-        if (user?.token) {
-          config.headers.Authorization = `Bearer ${user.token}`;
+        const token = parsed.token ?? parsed.user?.token ?? parsed.data?.token ?? parsed.data?.user?.token;
+
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
         }
       } catch {
         console.error('Invalid user in localStorage');
