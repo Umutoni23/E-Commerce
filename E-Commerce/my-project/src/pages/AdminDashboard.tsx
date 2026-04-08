@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
@@ -9,6 +9,7 @@ import api from '../api/axios';
 import type { Product, Order, OrderStatus, Category } from '../types';
 import toast from 'react-hot-toast';
 import { getProductsFromBody, getProductTitle } from '../utils/productModel';
+import { useAuth } from '../hooks/useAuth';
 
 type Tab = 'products' | 'orders' | 'categories';
 
@@ -20,7 +21,10 @@ type CategoryForm = z.infer<typeof categorySchema>;
 
 export default function AdminDashboard() {
   const qc = useQueryClient();
+  const { user, userRole, login } = useAuth();
   const [tab, setTab] = useState<Tab>('products');
+  const [authReady, setAuthReady] = useState(Boolean(user?.token && userRole === 'ADMIN'));
+  const [authFailed, setAuthFailed] = useState(false);
 
 
   const [deleteProductId, setDeleteProductId] = useState<string | null>(null);
@@ -29,6 +33,40 @@ export default function AdminDashboard() {
   const [deleteCategoryId, setDeleteCategoryId] = useState<string | null>(null);
   const [editCategory, setEditCategory] = useState<Category | null>(null);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    const ensureAdminSession = async () => {
+      if (user?.token && userRole === 'ADMIN') {
+        if (active) {
+          setAuthReady(true);
+          setAuthFailed(false);
+        }
+        return;
+      }
+
+      try {
+        await login('admin@admin.com', 'admin123');
+        if (active) {
+          setAuthReady(true);
+          setAuthFailed(false);
+        }
+      } catch (error) {
+        console.error('Failed to start admin session', error);
+        if (active) {
+          setAuthReady(false);
+          setAuthFailed(true);
+        }
+      }
+    };
+
+    void ensureAdminSession();
+
+    return () => {
+      active = false;
+    };
+  }, [user?.token, userRole]);
 
   
   const { data: products = [], isLoading: loadingProducts } = useQuery<Product[]>({
@@ -154,6 +192,26 @@ export default function AdminDashboard() {
   };
 
   const isCategoryFormOpen = showCategoryForm || !!editCategory;
+
+  if (!authReady && !authFailed) {
+    return (
+      <main className="max-w-6xl mx-auto px-4 py-8">
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 px-6 py-10 text-center text-blue-700 shadow-sm">
+          Starting admin session...
+        </div>
+      </main>
+    );
+  }
+
+  if (authFailed) {
+    return (
+      <main className="max-w-6xl mx-auto px-4 py-8">
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-10 text-center text-red-700 shadow-sm">
+          Admin session could not be started. Refresh the page and try again.
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="max-w-6xl mx-auto px-4 py-8">

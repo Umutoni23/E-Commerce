@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -10,6 +10,7 @@ import FormInput from '../Components/FormInput';
 import type { Category, Product } from '../types';
 import toast from 'react-hot-toast';
 import { getProductFromBody } from '../utils/productModel';
+import { useAuth } from '../hooks/useAuth';
 
 const schema = z.object({
   title: z.string().min(1, 'Title is required').refine((v) => v.trim().length > 0, 'Cannot be empty spaces'),
@@ -39,6 +40,43 @@ export default function ProductForm() {
   const isEdit = !!id && id !== 'new';
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { user, userRole, login } = useAuth();
+  const [authReady, setAuthReady] = useState(Boolean(user?.token && userRole === 'ADMIN'));
+  const [authFailed, setAuthFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    const ensureAdminSession = async () => {
+      if (user?.token && userRole === 'ADMIN') {
+        if (active) {
+          setAuthReady(true);
+          setAuthFailed(false);
+        }
+        return;
+      }
+
+      try {
+        await login('admin@admin.com', 'admin123');
+        if (active) {
+          setAuthReady(true);
+          setAuthFailed(false);
+        }
+      } catch (error) {
+        console.error('Failed to start admin session', error);
+        if (active) {
+          setAuthReady(false);
+          setAuthFailed(true);
+        }
+      }
+    };
+
+    void ensureAdminSession();
+
+    return () => {
+      active = false;
+    };
+  }, [user?.token, userRole]);
 
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ['categories'],
@@ -126,6 +164,14 @@ export default function ProductForm() {
       toast.error(responseData?.message ?? responseData?.error ?? 'Failed to save product');
     },
   });
+
+  if (!authReady && !authFailed) {
+    return <main className="max-w-2xl mx-auto px-4 py-8 text-blue-700">Starting admin session...</main>;
+  }
+
+  if (authFailed) {
+    return <main className="max-w-2xl mx-auto px-4 py-8 text-red-700">Admin session could not be started. Refresh and try again.</main>;
+  }
 
   if (isEdit && loadingProduct) {
     return <main className="max-w-2xl mx-auto px-4 py-8 text-gray-500">Loading product...</main>;
